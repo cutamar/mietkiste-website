@@ -4,6 +4,7 @@
 Run: python3 build.py
 """
 import json
+from datetime import date
 import re
 import shutil
 import sys
@@ -66,13 +67,17 @@ def layout(path, title, description, body, schema=None):
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{title}</title>
 <meta name="description" content="{description}">
-<link rel="canonical" href="{SITE}{path}">
+{'<meta name="robots" content="noindex">' if path == "/404.html" else f'<link rel="canonical" href="{SITE}{path}">'}
 <meta property="og:type" content="website">
+<meta property="og:site_name" content="Mietkiste">
 <meta property="og:title" content="{title}">
 <meta property="og:description" content="{description}">
 <meta property="og:url" content="{SITE}{path}">
 <meta property="og:image" content="{SITE}/assets/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
 <meta property="og:locale" content="de_CH">
+<meta name="twitter:card" content="summary_large_image">
 <meta name="theme-color" content="#0c5f5c">
 <link rel="icon" href="/favicon.ico" sizes="32x32">
 <link rel="icon" type="image/png" href="/assets/favicon-512.png">
@@ -83,7 +88,7 @@ def layout(path, title, description, body, schema=None):
 <body>
 <header class="site-header">
   <div class="wrap">
-    <a class="brand" href="/"><img src="/assets/icon.png" alt="" width="38" height="38">mietkiste</a>
+    <a class="brand" href="/"><img src="/assets/icon-76.png" alt="" width="38" height="38">mietkiste</a>
     <button class="nav-toggle" aria-label="Menü öffnen" aria-expanded="false" onclick="var n=document.querySelector('.nav');n.classList.toggle('open');this.setAttribute('aria-expanded',n.classList.contains('open'))">{ICON['menu']}</button>
     <nav class="nav">{nav}<a class="btn btn-wa btn-sm" href="{wa('Hallo Mietkiste, ich habe eine Anfrage:')}">{ICON['wa']}WhatsApp</a></nav>
   </div>
@@ -95,11 +100,11 @@ def layout(path, title, description, body, schema=None):
   <div class="wrap">
     <div class="footer-grid">
       <div>
-        <a class="brand" href="/" style="color:#fff"><img src="/assets/icon.png" alt="" width="38" height="38">mietkiste</a>
+        <a class="brand" href="/" style="color:#fff"><img src="/assets/icon-76.png" alt="" width="38" height="38">mietkiste</a>
         <p style="margin-top:12px">Vermietung von Reinigungs- und Trocknungsgeräten in der Region Brugg, Baden, Aarau und Zürich.</p>
       </div>
       <div>
-        <h4>Angebot</h4>
+        <p class="footer-title">Angebot</p>
         <ul>
           <li><a href="/teppichreiniger-mieten/">Teppich- &amp; Polsterreiniger</a></li>
           <li><a href="/bautrockner-mieten/">Bautrockner &amp; Luftentfeuchter</a></li>
@@ -107,7 +112,7 @@ def layout(path, title, description, body, schema=None):
         </ul>
       </div>
       <div>
-        <h4>Kontakt</h4>
+        <p class="footer-title">Kontakt</p>
         <ul>
           <li><a href="tel:{PHONE_TEL}">{PHONE_DISPLAY}</a></li>
           <li><a href="{WA}">WhatsApp</a></li>
@@ -155,7 +160,10 @@ BUSINESS = {
     "telephone": PHONE_TEL,
     "email": EMAIL,
     "priceRange": "CHF 15–149",
-    "areaServed": ["Brugg", "Baden", "Aarau", "Zürich"],
+    "areaServed": [{"@type": "City", "name": c} for c in
+                   ["Brugg", "Baden", "Wettingen", "Aarau", "Lenzburg", "Zürich"]],
+    "contactPoint": {"@type": "ContactPoint", "telephone": PHONE_TEL, "email": EMAIL,
+                     "contactType": "customer service", "availableLanguage": ["de", "en"]},
     "openingHoursSpecification": [
         {"@type": "OpeningHoursSpecification",
          "dayOfWeek": ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"],
@@ -167,6 +175,35 @@ BUSINESS = {
 }
 
 DELIVERY = "Lieferung in der Region Brugg, Baden, Aarau und Zürich (bis ca. 40 Min. ab Brugg): CHF 25 pro Weg."
+TOWNS = "Brugg, Baden, Wettingen, Aarau, Lenzburg, Zürich und Umgebung"
+
+
+def breadcrumb_schema(path, name):
+    return {
+        "@type": "BreadcrumbList",
+        "itemListElement": [
+            {"@type": "ListItem", "position": 1, "name": "Mietkiste", "item": SITE + "/"},
+            {"@type": "ListItem", "position": 2, "name": name, "item": SITE + path},
+        ],
+    }
+
+
+def service_schema(path, name, service_type, description, offers):
+    """Rental service with its prices, linked to the business."""
+    return {
+        "@type": "Service",
+        "@id": f"{SITE}{path}#service",
+        "name": name,
+        "serviceType": service_type,
+        "description": description,
+        "url": SITE + path,
+        "provider": {"@id": f"{SITE}/#business"},
+        "areaServed": BUSINESS["areaServed"],
+        "offers": [
+            {"@type": "Offer", "name": label, "price": str(price), "priceCurrency": "CHF"}
+            for label, price in offers
+        ],
+    }
 
 REVIEWS = [
     ("Hat alles bestens geklappt, gerne wieder ☺️", "Nadine, Teppich- &amp; Polsterreiniger"),
@@ -239,7 +276,7 @@ home_body = f"""
         <span>{ICON['receipt']} Quittung für die Versicherung</span>
       </div>
     </div>
-    <div class="hero-art"><img src="/assets/logo.png" alt="Mietkiste Logo" width="640" height="441"></div>
+    <div class="hero-art"><img src="/assets/logo.png" alt="Mietkiste Logo" width="480" height="331"></div>
   </div>
 </section>
 
@@ -367,7 +404,7 @@ puzzi_body = f"""
   <div class="wrap">
     <div class="breadcrumb"><a href="/">Mietkiste</a> › Teppichreiniger mieten</div>
     <h1>Teppich- &amp; Polsterreiniger mieten in Brugg</h1>
-    <p class="lead">Mit dem professionellen Kärcher Puzzi 8/1 Waschsauger reinigst du Sofa, Teppich, Matratze und Autositze in der Tiefe. Das Gerät sprüht Reinigungswasser in den Stoff und saugt das Schmutzwasser direkt wieder ab.</p>
+    <p class="lead">Kärcher Puzzi mieten statt kaufen: Mit dem professionellen Waschsauger (Sprühextraktionsgerät) reinigst du Sofa, Teppich, Matratze und Autositze in der Tiefe. Das Gerät sprüht Reinigungswasser in den Stoff und saugt das Schmutzwasser direkt wieder ab. Abholung in Brugg oder Lieferung nach {TOWNS}.</p>
     <div class="btn-row">
       <a class="btn btn-wa" href="{wa('Hallo Mietkiste, ich möchte den Teppich- und Polsterreiniger mieten. Datum:')}">{ICON['wa']}Verfügbarkeit anfragen</a>
       <a class="btn btn-ghost" href="#preise">Preise</a>
@@ -456,7 +493,7 @@ dryer_body = f"""
   <div class="wrap">
     <div class="breadcrumb"><a href="/">Mietkiste</a> › Bautrockner mieten</div>
     <h1>Bautrockner &amp; Luftentfeuchter mieten in Brugg</h1>
-    <p class="lead">Industrie-Luftentfeuchter mit bis zu 60 Litern Entfeuchtung pro Tag. Für Wasserschäden, nasse Keller, Renovationen und Neubauten. Lieferung in der Region und Quittung für die Versicherung.</p>
+    <p class="lead">Bautrockner, Luftentfeuchter oder Raumentfeuchter mieten: Unser Industrie-Kondenstrockner entfeuchtet bis zu 60 Liter pro Tag. Für Wasserschäden, nasse Keller, Renovationen und Neubauten. Abholung in Brugg oder Lieferung nach {TOWNS}, mit Quittung für die Versicherung.</p>
     <div class="btn-row">
       <a class="btn btn-wa" href="{wa('Hallo Mietkiste, ich brauche einen Bautrockner. Ab wann und für wie lange:')}">{ICON['wa']}Verfügbarkeit anfragen</a>
       <a class="btn btn-ghost" href="#preise">Preise</a>
@@ -541,7 +578,8 @@ partner_body = f"""
 
 <section class="section">
   <div class="wrap">
-    <div class="grid-3">
+    <h2>Für wen wir arbeiten</h2>
+    <div class="grid-3" style="margin-top:20px">
       <div class="card"><div class="icon y">{ICON['drop']}</div><h3>Hausverwaltungen &amp; Hauswarte</h3><p>Bautrockner nach Wasserschäden, direkt zur Liegenschaft geliefert. Quittung oder Rechnung für die Versicherung.</p></div>
       <div class="card"><div class="icon">{ICON['sofa']}</div><h3>Umzugs- &amp; Reinigungsfirmen</h3><p>Teppich- und Polsterreiniger für Endreinigungen und Wohnungsabgaben, auch kurzfristig nach Absprache.</p></div>
       <div class="card"><div class="icon">{ICON['handshake']}</div><h3>Garagen &amp; Autohandel</h3><p>Polsterreiniger für Autositze und Innenraum, zum Beispiel vor dem Verkauf eines Fahrzeugs.</p></div>
@@ -614,16 +652,29 @@ PAGES = [
      "Teppich- und Polsterreiniger sowie Bautrockner mieten in der Region Brugg, Baden, Aarau und Zürich. Sauber, geprüft, mit Lieferung. 5.0 Sterne.",
      home_body, {"@context": "https://schema.org", "@graph": [BUSINESS, faq_schema(HOME_FAQ)]}),
     ("/teppichreiniger-mieten/", "teppichreiniger-mieten/index.html",
-     "Teppichreiniger & Polsterreiniger mieten in Brugg | Mietkiste",
+     "Teppichreiniger & Polsterreiniger mieten Brugg | Mietkiste",
      "Kärcher Puzzi Teppich- und Polsterreiniger mieten in Brugg: Sofa, Teppich, Matratze, Autositze. Ab CHF 22 pro Tag, Lieferung bis Baden, Aarau, Zürich.",
-     puzzi_body, {"@context": "https://schema.org", "@graph": [BUSINESS, faq_schema(PUZZI_FAQ)]}),
+     puzzi_body, {"@context": "https://schema.org", "@graph": [
+         BUSINESS, faq_schema(PUZZI_FAQ),
+         breadcrumb_schema("/teppichreiniger-mieten/", "Teppichreiniger mieten"),
+         service_schema("/teppichreiniger-mieten/", "Teppich- & Polsterreiniger mieten (Kärcher Puzzi 8/1)",
+                        "Vermietung Teppichreiniger, Polsterreiniger, Waschsauger",
+                        "Kärcher Puzzi 8/1 Waschsauger für Sofa, Teppich, Matratze und Autositze, mit Schweizer Stecker-Adapter.",
+                        [("1 Tag", 22), ("Wochenende", 35), ("1 Woche", 69)])]}),
     ("/bautrockner-mieten/", "bautrockner-mieten/index.html",
      "Bautrockner & Luftentfeuchter mieten in Brugg | Mietkiste",
      "Bautrockner mieten für Wasserschaden, Keller und Renovation in Brugg, Baden, Aarau und Zürich. 60 L/Tag, ab CHF 49 pro Woche, Quittung für die Versicherung.",
-     dryer_body, {"@context": "https://schema.org", "@graph": [BUSINESS, faq_schema(DRYER_FAQ)]}),
+     dryer_body, {"@context": "https://schema.org", "@graph": [
+         BUSINESS, faq_schema(DRYER_FAQ),
+         breadcrumb_schema("/bautrockner-mieten/", "Bautrockner mieten"),
+         service_schema("/bautrockner-mieten/", "Bautrockner & Luftentfeuchter mieten (60 L/Tag)",
+                        "Vermietung Bautrockner, Luftentfeuchter",
+                        "Industrie-Luftentfeuchter mit bis zu 60 Litern Entfeuchtung pro Tag für Wasserschäden, Keller, Renovation und Neubau.",
+                        [("1 Tag", 15), ("1 Woche", 49), ("2 Wochen", 85), ("1 Monat", 149)])]}),
     ("/partner/", "partner/index.html", "Für Verwaltungen, Hauswarte & Firmen | Mietkiste",
      "Bautrockner und Teppichreiniger für Hausverwaltungen, Hauswarte, Umzugs- und Reinigungsfirmen in der Region Brugg. Lieferung vor Ort, Rechnung möglich.",
-     partner_body, {"@context": "https://schema.org", "@graph": [BUSINESS]}),
+     partner_body, {"@context": "https://schema.org", "@graph": [
+         BUSINESS, breadcrumb_schema("/partner/", "Für Partner")]}),
     ("/impressum/", "impressum/index.html", "Impressum | Mietkiste", "Impressum von Mietkiste.", impressum_body, None),
     ("/datenschutz/", "datenschutz/index.html", "Datenschutz | Mietkiste", "Datenschutzerklärung von Mietkiste.", datenschutz_body, None),
     ("/404.html", "404.html", "Seite nicht gefunden | Mietkiste", "Diese Seite wurde nicht gefunden.", notfound_body, None),
@@ -651,7 +702,8 @@ def main():
     (OUT / ".nojekyll").write_text("")
     (OUT / "robots.txt").write_text(f"User-agent: *\nAllow: /\nSitemap: {SITE}/sitemap.xml\n")
     urls = [p for p, *_ in PAGES if p != "/404.html"]
-    sitemap = "".join(f"<url><loc>{SITE}{u}</loc></url>" for u in urls)
+    today = date.today().isoformat()
+    sitemap = "".join(f"<url><loc>{SITE}{u}</loc><lastmod>{today}</lastmod></url>" for u in urls)
     (OUT / "sitemap.xml").write_text(
         f'<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">{sitemap}</urlset>\n')
     print(f"Built {len(PAGES)} pages into {OUT}")
